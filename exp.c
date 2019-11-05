@@ -1,32 +1,80 @@
 #include <stdio.h>
 
-int lerCache(void) {
-    int lixo=10;
-    int result;
-    int result2;
-    void *addr=&lixo;
-    /* Compute Greatest Common Divisor using Euclid's Algorithm */
-    __asm__ __volatile__ ( 	"rdtsc;"
-				"mov %%eax,%0;"
-		    		"mov %2, %%rbx;"
-				"mov (%%rbx),%%rcx;"
+char *probe="OLAMUNDOO";
+char *probe2;
+
+int lerCacheNoFlush(void *addr) {
+    unsigned long result;
+    				/* M 3 l T d 0 w N  - cache+reload */
+    __asm__ __volatile__ ( 	
+		    		"mfence ;"
+				"lfence ;"
+		    		"mov %1, %%rbx;"
+				"lfence;"
+
 				"rdtsc;"
+				"lfence;"
+				"shl $32,%%rdx;"
+				"mov %%eax,%%edx;"
+				"mov %%rdx,%%rcx;"
+				"lfence;"
+
+				"mov (%%rbx),%%r9;"
+				"lfence;"
+				"rdtsc;"
+				"lfence;"
+				"shl $32,%%rdx;"
+				"mov %%eax,%%edx;"
+				"sub %%rcx,%%rdx;"
+				"mov %%rdx,%0;"
 				
-				
-                          	"mov %%eax, %1;" : "=g" (result),"=g"(result2) : "g" (addr)
+
+				: "=g" (result) : "g" (probe)
     );
-    printf("resultaio=0x%16X\n",result);
-    printf("resultaio=0x%16X\n",result2);
+    printf("resultado %p :(tempo) 0x%lX  \n",addr,result);
+
+    return result ;
+}
+
+
+int lerCache(void *addr) {
+    unsigned long result;
+    				/* M 3 l T d 0 w N  - cache+reload */
+    __asm__ __volatile__ ( 	
+		    		"mfence ;"
+				"lfence ;"
+		    		"mov %1, %%rbx;"
+				"clflush  0(%1);"
+				"lfence;"
+
+				"rdtsc;"
+				"lfence;"
+				"shl $32,%%rdx;"
+				"mov %%eax,%%edx;"
+				"mov %%rdx,%%rcx;"
+				"lfence;"
+
+				"mov (%%rbx),%%r9;"
+				"lfence;"
+				"rdtsc;"
+				"lfence;"
+				"shl $32,%%rdx;"
+				"mov %%eax,%%edx;"
+				"sub %%rcx,%%rdx;"
+				"mov %%rdx,%0;"
+				
+
+				: "=g" (result) : "g" (probe)
+    );
+    printf("resultado %p :(tempo) 0x%lX  \n",addr,result);
 
     return result ;
 }
 
 int main() {
-    int first, second ;
-    //printf( "Enter two integers : " ) ;
-    //scanf( "%d%d", &first, &second );
-
-    //printf( "GCD of %d & %d is %d\n", first, second, gcd(first, second) ) ;
-    lerCache();
+    probe2=probe+100000;
+    lerCache(probe);
+    lerCacheNoFlush(probe);
+    lerCacheNoFlush(probe2);
     return 0 ;
 }
