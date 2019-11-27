@@ -1,6 +1,6 @@
 
 
 all:
-	gcc -Wall -o meltdown meltdownPoc.c -O0 -m64
+	gcc  -o string stringGenerator.c
+	gcc  -o meltdown meltdown.c -O0
 	#objdump -M intel -d ./meltdown
-	./meltdown
