@@ -1,3 +1,5 @@
-break *0x0000555555557c84
+break *0x080489ea
+break *0x08048a60
+
 
 

